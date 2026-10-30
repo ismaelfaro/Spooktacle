@@ -8,6 +8,20 @@ It runs without installing anything and works offline. The only thing that uses 
 
 Intended setup: a Window/Mac/Linux with Chrome (can work in other webbroser), a projector and speakers (any computer with a modern Chromium-based browser should work).
 
+## Screenshots
+
+The show projected over the reference image (preview mode, `index.html?preview`):
+
+| Awakening | Ghosts |
+|---|---|
+| ![Scene 1: Awakening](docs/screenshots/scene-1-awakening.png) | ![Scene 2: Ghosts](docs/screenshots/scene-2-ghosts.png) |
+| **Storm** | **Pumpkin party** |
+| ![Scene 3: Storm](docs/screenshots/scene-3-storm.png) | ![Scene 7: Pumpkin party](docs/screenshots/scene-7-pumpkin-party.png) |
+
+The mapping editor (press **E**). Each colored outline is a zone; the grid, diagonals and circle show how the zone is warped onto the real surface:
+
+![Mapping editor](docs/screenshots/mapping-editor.png)
+
 > **About the reference image.** `assets/home_picture.jpg` is a schematic placeholder, not a real photo. The default zones are laid out on it. Replace it with a photo of your own house (or load one from the editor panel) and adjust the zones.
 
 ## Quick start
