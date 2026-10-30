@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Spooktacle Video Mapping" width="480">
+</p>
+
 # Spooktacle Video Mapping
 
 **Procedural Halloween projection mapping for your house.**
