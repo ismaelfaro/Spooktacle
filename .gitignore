@@ -3,8 +3,9 @@
 .vscode/
 .idea/
 
-# Local tooling
-.claude/
+# Local tooling (agent definitions in .claude/agents/ are shared on purpose)
+.claude/*
+!.claude/agents/
 
 # Private material: never publish real photos of a house
 _to_delete/
