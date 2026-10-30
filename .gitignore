@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Local tooling
+.claude/
+
+# Private material: never publish real photos of a house
+_to_delete/
+fotos referencia/
+*.HEIC
+*.heic
+IMG_*.JPG
+IMG_*.jpg
+
+# Misc
+node_modules/
+*.log

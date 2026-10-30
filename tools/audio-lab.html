@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Spooktacle Video Mapping · audio lab</title>
+  <style>
+    body { margin: 0; background: #0b0910; color: #ddd; font: 13px/1.4 ui-monospace, Menlo, monospace; }
+    #info { padding: 8px 12px; white-space: pre-wrap; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <!-- Renders a scene's soundtrack offline, not in real time (score + the scene's effects), and draws
+       waveform, spectrogram, level per second and event markers. Parameters:
+       ?scene=1..8 | susto   &from=0 (seconds)   &secs=30   &sfx=wolf (tests a single effect) -->
+  <div id="info">renderizando…</div>
+  <canvas id="c" width="1880" height="900"></canvas>
+  <script src="../js/art.js"></script>
+  <script src="../js/homography.js"></script>
+  <script src="../js/zones.js"></script>
+  <script src="../js/audio.js"></script>
+  <script src="../js/audio/sfx-weather.js"></script>
+  <script src="../js/audio/sfx-creatures.js"></script>
+  <script src="../js/audio/sfx-voices.js"></script>
+  <script src="../js/audio/sfx-house.js"></script>
+  <script src="../js/audio/sfx-magic.js"></script>
+  <script src="../js/scenes.js"></script>
+  <script src="../js/scenes/01-despertar.js"></script>
+  <script src="../js/scenes/02-fantasmas.js"></script>
+  <script src="../js/scenes/03-tormenta.js"></script>
+  <script src="../js/scenes/04-ojos.js"></script>
+  <script src="../js/scenes/05-aranas.js"></script>
+  <script src="../js/scenes/06-derrumbe.js"></script>
+  <script src="../js/scenes/07-fiesta.js"></script>
+  <script src="../js/scenes/08-happy-halloween.js"></script>
+  <script src="../js/scenes/99-susto.js"></script>
+  <script src="../js/audio/01-despertar.js"></script>
+  <script src="../js/audio/02-fantasmas.js"></script>
+  <script src="../js/audio/03-tormenta.js"></script>
+  <script src="../js/audio/04-ojos.js"></script>
+  <script src="../js/audio/05-aranas.js"></script>
+  <script src="../js/audio/06-derrumbe.js"></script>
+  <script src="../js/audio/07-fiesta.js"></script>
+  <script src="../js/audio/08-happy-halloween.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const info = document.getElementById('info');
+    // minimal scene state, same as in main.js
+    const S = {
+      t: 0, prevT: 0, T: 0, dt: 1 / 60, dur: 1, playing: true, active: true,
+      zoneCount: 9, kinds: { wall: 3, roof: 1, window: 4, door: 1 }, focus: [0.55, 0.42], textZoneId: null, aspect: 16 / 9, screenZones: [],
+      crossed(x) { return this.prevT < x && this.t >= x; },
+      every(p, off = 0) { return this.t >= off && Math.floor((this.t - off) / p) !== Math.floor((this.prevT - off) / p); },
+    };
+
+    // FFT radix-2 in situ
+    function fft(re, im) {
+      const n = re.length;
+      for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const a = -2 * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+        for (let i = 0; i < n; i += len) {
+          let cr = 1, ci = 0;
+          for (let k = 0; k < len / 2; k++) {
+            const ur = re[i + k], ui = im[i + k], vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci, vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+            re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+            [cr, ci] = [cr * wr - ci * wi, cr * wi + ci * wr];
+          }
+        }
+      }
+    }
+    const db = x => 20 * Math.log10(Math.max(1e-6, x));
+
+    async function main() {
+      const which = q.get('scene') || '1', from = +(q.get('from') || 0);
+      let scene, label;
+      if (q.get('sfx')) {
+        // a single effect, to "hear" it with your eyes
+        const name = q.get('sfx');
+        scene = { name: 'sfx:' + name, update(S) { if (S.crossed(0.2)) Sound[name]({ pan: 0 }); } };
+        label = 'effect ' + name;
+      } else if (which === 'susto') {
+        scene = { name: 'Susto', update(S) { if (S.crossed(0.1)) Sound.scream(); JUMPSCARE.update?.(S, S.t); } };
+        label = 'jump scare';
+      } else {
+        scene = SCENES[+which - 1];
+        label = `${which} ${scene.name}`;
+      }
+      const secs = +(q.get('secs') || (scene.duration ? Math.min(scene.duration - from, 40) : 4));
+      S.dur = scene.duration || secs;
+      // effect events fired by the scene (to mark them on the graph)
+      const events = [];
+      for (const n of Object.keys(SFX)) { const f = Sound[n]; Sound[n] = (...a) => { events.push([S.t, n]); return f(...a); }; }
+      const t0 = performance.now();
+      // default zones (those of the photo), same as in the show: some scenes fire effects per window or wall
+      // and prepare data when drawing, so they are drawn too (1 in every 3 frames, on separate canvases)
+      const zones = defaultZones().map(createZone);
+      const byKind = indexZones(zones);
+      zones.forEach(z => layoutZone(z));
+      const ZW = innerWidth, ZH = innerHeight;
+      S.zoneCount = zones.length;
+      S.kinds = Object.fromEntries(Object.entries(byKind).map(([k, v]) => [k, v.length]));
+      S.screenZones = zones.map(z => {
+        const pts = z.pts.map(([x, y]) => [x * ZW, y * ZH]), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+        return { id: z.id, name: z.name, kind: z.kind, index: z.index, count: z.count, pts, cx: z.cx * ZW, cy: z.cy * ZH, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+      });
+      const walls = byKind.wall || [], door = (byKind.door || [])[0];
+      S.textZoneId = walls.reduce((a, b) => (!a || b.area > a.area ? b : a), null)?.id;
+      S.focus = door ? [door.cx, door.cy] : [0.5, 0.8];
+      S.aspect = ZW / ZH;
+      const fxc = document.createElement('canvas');
+      fxc.width = ZW; fxc.height = ZH;
+      const fctx = fxc.getContext('2d');
+      const draw = (S, k) => {
+        if (!scene.draw || k % 3) return;
+        for (const z of zones) { z.ctx.setTransform(1, 0, 0, 1, 0, 0); z.ctx.clearRect(0, 0, z.w, z.h); z.ctx.save(); try { scene.draw(z.ctx, z, S); } finally { z.ctx.restore(); } }
+        if (scene.drawGlobal) { fctx.save(); try { scene.drawGlobal(fctx, ZW, ZH, S); } finally { fctx.restore(); } }
+      };
+      const buf = await Sound.renderScene(scene, S, from, secs, draw);
+      const L = buf.getChannelData(0), R = buf.getChannelData(1), sr = buf.sampleRate, n = L.length;
+
+      // statistics
+      let peak = 0, clips = 0, sumSq = 0, silentSecs = 0, sumL = 0, sumR = 0;
+      const perSec = [];
+      for (let s = 0; s < Math.ceil(n / sr); s++) {
+        let ss = 0, cnt = 0;
+        for (let i = s * sr; i < Math.min(n, (s + 1) * sr); i++) {
+          const a = Math.abs(L[i]), b = Math.abs(R[i]);
+          peak = Math.max(peak, a, b);
+          if (a > 0.995 || b > 0.995) clips++;
+          ss += (L[i] * L[i] + R[i] * R[i]) / 2; cnt++;
+          sumL += L[i] * L[i]; sumR += R[i] * R[i];
+        }
+        sumSq += ss;
+        const rms = Math.sqrt(ss / Math.max(1, cnt));
+        perSec.push(db(rms).toFixed(0));
+        if (db(rms) < -50) silentSecs++;
+      }
+      const rmsAll = Math.sqrt(sumSq / n);
+      const balance = db(Math.sqrt(sumR / n)) - db(Math.sqrt(sumL / n));
+      const stats = `AUDIO ${label} · ${secs.toFixed(1)} s from ${from} s · render ${(performance.now() - t0).toFixed(0)} ms\n` +
+        `pico ${db(peak).toFixed(1)} dBFS · RMS ${db(rmsAll).toFixed(1)} dBFS · muestras saturadas ${clips} · segundos en silencio (<-50 dB) ${silentSecs} · balance D-I ${balance.toFixed(1)} dB\n` +
+        `RMS por segundo (dB): ${perSec.join(' ')}\n` +
+        `eventos de la escena: ${events.map(([t, e]) => `${t.toFixed(1)}s ${e}`).join(', ') || 'ninguno'}`;
+      info.textContent = stats;
+      console.log(stats.replace(/\n/g, ' | '));
+
+      // graph: waveform on top, spectrogram (logarithmic frequency axis) below
+      const c = document.getElementById('c'), ctx = c.getContext('2d'), W = c.width, H = c.height, WH = 200, SH = H - WH - 30;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#7fd'; ctx.beginPath();
+      for (let x = 0; x < W; x++) {
+        let mn = 0, mx = 0;
+        const a = Math.floor(x / W * n), b = Math.floor((x + 1) / W * n);
+        for (let i = a; i < b; i++) { const v = (L[i] + R[i]) / 2; if (v < mn) mn = v; if (v > mx) mx = v; }
+        ctx.moveTo(x + 0.5, WH / 2 - mx * WH / 2); ctx.lineTo(x + 0.5, WH / 2 - mn * WH / 2);
+      }
+      ctx.stroke();
+      const N = 2048, img = ctx.createImageData(W, SH), re = new Float32Array(N), im = new Float32Array(N);
+      const fMin = 30, fMax = 16000;
+      for (let x = 0; x < W; x++) {
+        const c0 = Math.floor(x / W * (n - N));
+        for (let i = 0; i < N; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); re[i] = (L[c0 + i] + R[c0 + i]) / 2 * w; im[i] = 0; }
+        fft(re, im);
+        for (let y = 0; y < SH; y++) {
+          const f = fMin * Math.pow(fMax / fMin, 1 - y / SH), bin = Math.min(N / 2 - 1, Math.round(f / sr * N));
+          const mag = db(Math.hypot(re[bin], im[bin]) / N * 4), v = Math.max(0, Math.min(1, (mag + 90) / 80));
+          const o = (y * W + x) * 4;
+          img.data[o] = 255 * Math.min(1, v * 1.8); img.data[o + 1] = 255 * Math.max(0, v * 1.6 - 0.5); img.data[o + 2] = 255 * Math.max(0, 0.6 - v) * v * 3 + 255 * Math.max(0, v - 0.85) * 4; img.data[o + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, WH + 30);
+      ctx.fillStyle = '#fff'; ctx.font = '12px monospace';
+      for (const f of [50, 100, 250, 500, 1000, 2500, 5000, 10000]) { const y = WH + 30 + SH * (1 - Math.log(f / fMin) / Math.log(fMax / fMin)); ctx.fillText(f >= 1000 ? f / 1000 + 'k' : f, 4, y); }
+      for (let s = 0; s <= secs; s++) { const x = s / secs * W; ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x, WH, 1, 30); ctx.fillStyle = '#aaa'; ctx.fillText((from + s).toFixed(0), x + 2, WH + 22); }
+      ctx.fillStyle = '#ff0';
+      for (const [t, e] of events) { const x = (t - from) / secs * W; ctx.fillRect(x, 0, 2, WH); ctx.fillText(e, x + 3, 12); }
+      document.title = 'listo';
+    }
+    main().catch(err => { info.textContent = 'ERROR ' + err.stack; console.error(err); });
+  </script>
+</body>
+</html>

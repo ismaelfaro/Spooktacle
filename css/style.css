@@ -1,0 +1,64 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+body { color: #e9e4f2; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
+
+/* Stage: one canvas per zone, warped with matrix3d */
+#stage { position: fixed; inset: 0; pointer-events: none; }
+#stage canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#stage #fade { position: absolute; inset: 0; background: #000; opacity: 0; }
+
+/* Preview (?preview or the V key): simulates the night projection over the house photo.
+   Projected light multiplies the facade color; a little ambient light is added on top. */
+#ambient { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; pointer-events: none; mix-blend-mode: plus-lighter; opacity: 0.07; }
+#cover { position: fixed; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
+body.preview #ref, body.preview #ambient, body.preview #cover { display: block; }
+body.preview #stage { background: #000; mix-blend-mode: multiply; }
+
+#ref { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; pointer-events: none; }
+body.edit.has-ref #ref { display: block; }
+#overlay { position: fixed; inset: 0; width: 100%; height: 100%; display: none; cursor: crosshair; touch-action: none; }
+body.edit #overlay { display: block; }
+body.nocursor, body.nocursor * { cursor: none !important; }
+
+/* Edit panel */
+#panel { position: fixed; top: 12px; right: 12px; width: 290px; max-height: calc(100vh - 24px); overflow: auto; background: rgba(18, 12, 28, 0.94); border: 1px solid #3d2b57; border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
+#panel[hidden] { display: none; }
+#panel header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #3d2b57; color: #ff9a2e; }
+#panel.collapsed .body { display: none; }
+#panel .body { padding: 4px 10px 10px; }
+#panel section { padding: 8px 0; border-bottom: 1px solid #2a1f3b; display: grid; gap: 6px; }
+#panel label { display: grid; gap: 3px; color: #b9aecb; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+button, .btn { appearance: none; display: inline-block; background: #2b1f40; color: #f2ecfa; border: 1px solid #4a3768; border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+#panel label.btn { display: inline-block; color: #f2ecfa; }
+button:hover, .btn:hover { background: #3a2a56; }
+button.danger { border-color: #7a2a3a; }
+#btn-show { background: #ff7a1a; color: #1a0d05; border: 2px solid #ffc27a; font-weight: 700; font-size: 15px; letter-spacing: .03em; padding: 9px 12px; box-shadow: 0 0 14px rgba(255, 154, 46, .55); }
+#btn-show:hover { background: #ff9a2e; }
+#panel header #btn-show { flex: 1; margin-right: 6px; }
+input[type=text], select { width: 100%; background: #0f0a18; color: #f2ecfa; border: 1px solid #4a3768; border-radius: 6px; padding: 5px 6px; font: inherit; }
+input[type=range] { width: 100%; }
+.row .grow { flex: 1; width: auto; }
+#zone-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
+#zone-list li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+#zone-list li:hover { background: #2a1f3b; }
+#zone-list li.sel { background: #4a3510; color: #ffd400; }
+#zone-list .role { margin-left: auto; color: #8e83a3; font-size: 11px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.dot.wall { background: hsl(210 55% 50%); }
+.dot.roof { background: hsl(280 55% 55%); }
+.dot.window { background: hsl(45 80% 55%); }
+.dot.door { background: hsl(130 50% 45%); }
+#zone-props.disabled { opacity: 0.4; pointer-events: none; }
+.hint { color: #8e83a3; font-size: 11px; margin: 8px 0 0; }
+
+#help { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 320px; padding: 18px 24px; background: rgba(18, 12, 28, 0.96); border: 1px solid #3d2b57; border-radius: 12px; }
+#help[hidden] { display: none; }
+#help h2 { margin: 0 0 10px; color: #ff9a2e; font-size: 18px; }
+#help dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; }
+#help dt { font-weight: 700; color: #ffd400; }
+#help dd { margin: 0; }
+#help-scenes { color: #b9aecb; margin: 12px 0 0; max-width: 420px; }
+
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 6px 14px; background: rgba(0, 0, 0, 0.8); color: #fff; border-radius: 8px; font-size: 14px; white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+#toast.on { opacity: 1; }
